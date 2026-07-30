@@ -46,27 +46,34 @@ export default {
       // own slash commands with Discord — no local tools needed. Requires the
       // DISCORD_APPLICATION_ID and DISCORD_TOKEN secrets; the token secret can
       // be deleted afterwards (it's only used here, never for interactions).
-      if (new URL(request.url).pathname === "/register") {
-        if (!env.DISCORD_APPLICATION_ID || !env.DISCORD_TOKEN) {
-          return new Response(
-            "Not configured. Add DISCORD_APPLICATION_ID and DISCORD_TOKEN as secrets " +
-              "(Worker → Settings → Variables and Secrets), then reload this page.",
-            { status: 503 },
-          );
+      const path = new URL(request.url).pathname;
+
+      // Setup diagnostics: shows which variables the running Worker can
+      // actually see. Never prints values — only lengths and shape checks.
+      if (path === "/status" || path === "/register") {
+        const appId = (env.DISCORD_APPLICATION_ID ?? "").trim();
+        const token = (env.DISCORD_TOKEN ?? "").trim();
+        const publicKey = (env.DISCORD_PUBLIC_KEY ?? "").trim();
+
+        if (path === "/status" || !appId || !token) {
+          return text(statusReport({ appId, token, publicKey, kv: !!env.FILTERS }), {
+            status: path === "/status" ? 200 : 503,
+          });
         }
+
         try {
-          const names = await registerCommands(env.DISCORD_APPLICATION_ID, env.DISCORD_TOKEN);
-          return new Response(
+          const names = await registerCommands(appId, token);
+          return text(
             `✅ Registered commands: ${names.join(", ")}\n\n` +
               "You can now delete the DISCORD_TOKEN secret if you like — " +
               "the bot doesn't need it for normal operation.",
-            { status: 200 },
           );
         } catch (e) {
-          return new Response(`❌ Registration failed — ${e.message}`, { status: 502 });
+          return text(`❌ Registration failed — ${e.message}`, { status: 502 });
         }
       }
-      return new Response("⚙️ Industrial Buddy is running.", { status: 200 });
+
+      return text("⚙️ Industrial Buddy is running.\n\nSetup: /status · /register");
     }
 
     const signature = request.headers.get("x-signature-ed25519");
@@ -387,7 +394,71 @@ function searchReply(filters, query) {
   return { embeds: [embed], components: [copySelectRow(matches)], flags: EPHEMERAL };
 }
 
+// -------------------------------------------------------------- diagnostics
+
+// Human-readable setup check. Reports only presence, length, and shape —
+// never the values themselves.
+function statusReport({ appId, token, publicKey, kv }) {
+  const hex64 = /^[0-9a-f]{64}$/i;
+  const digits = /^\d{15,25}$/;
+
+  const line = (name, value, ok, expected) => {
+    if (!value) return `  ✗ ${name} — NOT VISIBLE to the Worker`;
+    const shape = ok ? "looks right" : `set, but doesn't look like ${expected}`;
+    return `  ${ok ? "✓" : "!"} ${name} — ${value.length} chars, ${shape}`;
+  };
+
+  const checks = [
+    ["DISCORD_PUBLIC_KEY", publicKey, hex64.test(publicKey), "64 hex characters"],
+    ["DISCORD_APPLICATION_ID", appId, digits.test(appId), "a numeric application ID"],
+    ["DISCORD_TOKEN", token, token.split(".").length === 3, "a bot token"],
+  ];
+
+  const lines = [
+    "Industrial Buddy — setup status",
+    "",
+    ...checks.map((c) => line(...c)),
+    `  ${kv ? "✓" : "✗"} FILTERS (KV storage) — ${kv ? "bound" : "not bound; /admin will be disabled"}`,
+    "",
+  ];
+
+  if (!appId || !token) {
+    lines.push(
+      "Missing variables are almost always one of these:",
+      "",
+      "1. Added under the wrong section. They must be at",
+      "   Worker → Settings → Variables and Secrets (runtime).",
+      "   Build variables (Settings → Build) are NOT visible at runtime.",
+      "2. Not deployed yet. After adding secrets, the Worker must redeploy —",
+      "   click Deploy on the Worker, or push a commit to trigger a build.",
+      "3. Name typo or wrong Worker/environment. Names are case-sensitive:",
+      "   DISCORD_APPLICATION_ID, DISCORD_TOKEN.",
+      "",
+      "Fix, then reload /register.",
+    );
+  } else if (checks.some(([, value, ok]) => value && !ok)) {
+    lines.push(
+      "Everything is visible, but a value above looks wrong — check you didn't",
+      "paste the Application ID into the token field (or vice versa).",
+      "",
+      "Visit /register to try anyway; Discord will report the exact problem.",
+    );
+  } else {
+    lines.push("All set — visit /register to register the slash commands.");
+  }
+
+  return lines.join("\n");
+}
+
 // ------------------------------------------------------------------ helpers
+
+// Plain-text response, never cached (so a reload always re-checks).
+function text(body, init = {}) {
+  return new Response(body, {
+    status: init.status ?? 200,
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+  });
+}
 
 function json(payload) {
   return new Response(JSON.stringify(payload), {
