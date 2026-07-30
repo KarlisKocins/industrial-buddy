@@ -1,0 +1,15 @@
+{
+  "name": "industrial-buddy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Discord bot for one-click Rust industrial filter copying — pinned catalog browser (design 1b), hosted free on Cloudflare Workers.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "register": "node scripts/register.js"
+  },
+  "devDependencies": {
+    "wrangler": "^3.60.0"
+  }
+}
