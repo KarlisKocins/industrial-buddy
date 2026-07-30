@@ -18,6 +18,7 @@ import {
   parseFilterJson,
   makeId,
 } from "./filters.js";
+import { registerCommands } from "./commands.js";
 
 // Discord interaction types / response types / component types
 const PING = 1;
@@ -41,6 +42,30 @@ const EMBED_COLOR = 0xe8a13a; // the amber from the design
 export default {
   async fetch(request, env) {
     if (request.method !== "POST") {
+      // One-time browser setup: visiting /register makes the bot register its
+      // own slash commands with Discord — no local tools needed. Requires the
+      // DISCORD_APPLICATION_ID and DISCORD_TOKEN secrets; the token secret can
+      // be deleted afterwards (it's only used here, never for interactions).
+      if (new URL(request.url).pathname === "/register") {
+        if (!env.DISCORD_APPLICATION_ID || !env.DISCORD_TOKEN) {
+          return new Response(
+            "Not configured. Add DISCORD_APPLICATION_ID and DISCORD_TOKEN as secrets " +
+              "(Worker → Settings → Variables and Secrets), then reload this page.",
+            { status: 503 },
+          );
+        }
+        try {
+          const names = await registerCommands(env.DISCORD_APPLICATION_ID, env.DISCORD_TOKEN);
+          return new Response(
+            `✅ Registered commands: ${names.join(", ")}\n\n` +
+              "You can now delete the DISCORD_TOKEN secret if you like — " +
+              "the bot doesn't need it for normal operation.",
+            { status: 200 },
+          );
+        } catch (e) {
+          return new Response(`❌ Registration failed — ${e.message}`, { status: 502 });
+        }
+      }
       return new Response("⚙️ Industrial Buddy is running.", { status: 200 });
     }
 

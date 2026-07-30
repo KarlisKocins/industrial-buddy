@@ -42,11 +42,17 @@ Back on the app's **General Information** page, set
 **Interactions Endpoint URL** to your Worker URL and save. Discord sends a
 test ping — if the save succeeds, the signature check is working.
 
-### 4. Register the slash commands
+### 4. Register the slash commands (in the browser)
 
-```sh
-DISCORD_APPLICATION_ID=<app id> DISCORD_TOKEN=<bot token> npm run register
-```
+1. Add two more secrets on the Worker (Settings → Variables and Secrets):
+   `DISCORD_APPLICATION_ID` (General Information page) and `DISCORD_TOKEN`
+   (Bot page → Reset Token).
+2. Visit `https://<your-worker>.workers.dev/register` in your browser.
+   You should see: `✅ Registered commands: /catalog, /filter, /admin`.
+3. Optional: delete the `DISCORD_TOKEN` secret again — the bot only needs it
+   for this step, never for normal operation.
+
+(Equivalent CLI, if you prefer: `DISCORD_APPLICATION_ID=... DISCORD_TOKEN=... npm run register`)
 
 ### 5. Post & pin the catalog
 

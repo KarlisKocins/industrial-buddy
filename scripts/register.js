@@ -1,8 +1,11 @@
-// One-time (re-run after changes) registration of the bot's slash commands.
+// Optional CLI for registering slash commands. Most people don't need this —
+// the deployed Worker registers its own commands when you visit
+// https://<your-worker>.workers.dev/register in a browser (see README).
+//
 // Usage:
 //   DISCORD_APPLICATION_ID=... DISCORD_TOKEN=... node scripts/register.js
-//
-// The bot token is ONLY needed here — the Worker itself never uses it.
+
+import { registerCommands } from "../src/commands.js";
 
 const APPLICATION_ID = process.env.DISCORD_APPLICATION_ID;
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -12,65 +15,9 @@ if (!APPLICATION_ID || !TOKEN) {
   process.exit(1);
 }
 
-const commands = [
-  {
-    name: "catalog",
-    description: "Post the filter catalog message (pin it afterwards)",
-    // Restricted to members with Manage Messages so random users can't spam it.
-    default_member_permissions: "8192",
-  },
-  {
-    name: "filter",
-    description: "Rust industrial filter tools",
-    options: [
-      {
-        type: 1, // SUB_COMMAND
-        name: "search",
-        description: "Find a filter by item or machine",
-        options: [
-          {
-            type: 3, // STRING
-            name: "query",
-            description: 'e.g. "sulfur refinery" or "metal.ore"',
-            required: true,
-          },
-        ],
-      },
-    ],
-  },
-  {
-    name: "admin",
-    description: "Manage the filter library (mods only)",
-    // Only members with Manage Messages see/use this; server owners can
-    // adjust who exactly in Server Settings → Integrations → Industrial Buddy.
-    default_member_permissions: "8192",
-    options: [
-      {
-        type: 1, // SUB_COMMAND
-        name: "add",
-        description: "Add a filter to the catalog via a form",
-      },
-      {
-        type: 1, // SUB_COMMAND
-        name: "remove",
-        description: "Remove a filter from the catalog",
-      },
-    ],
-  },
-];
-
-const res = await fetch(`https://discord.com/api/v10/applications/${APPLICATION_ID}/commands`, {
-  method: "PUT",
-  headers: {
-    Authorization: `Bot ${TOKEN}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify(commands),
-});
-
-if (res.ok) {
-  console.log("✅ Registered commands:", (await res.json()).map((c) => `/${c.name}`).join(", "));
-} else {
-  console.error("❌ Registration failed:", res.status, await res.text());
+try {
+  console.log("✅ Registered commands:", (await registerCommands(APPLICATION_ID, TOKEN)).join(", "));
+} catch (e) {
+  console.error("❌ Registration failed:", e.message);
   process.exit(1);
 }
