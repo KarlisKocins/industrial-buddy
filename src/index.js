@@ -41,38 +41,25 @@ const EMBED_COLOR = 0xe8a13a; // the amber from the design
 
 export default {
   async fetch(request, env) {
+    const path = new URL(request.url).pathname;
+
+    // One-time browser setup. /register registers the bot's slash commands
+    // with Discord — either from stored secrets, or from a token pasted into
+    // the form it serves (nothing is stored in that case). /status reports
+    // which variables the running Worker can see.
+    if (path === "/register") return await handleRegister(request, env);
+
     if (request.method !== "POST") {
-      // One-time browser setup: visiting /register makes the bot register its
-      // own slash commands with Discord — no local tools needed. Requires the
-      // DISCORD_APPLICATION_ID and DISCORD_TOKEN secrets; the token secret can
-      // be deleted afterwards (it's only used here, never for interactions).
-      const path = new URL(request.url).pathname;
-
-      // Setup diagnostics: shows which variables the running Worker can
-      // actually see. Never prints values — only lengths and shape checks.
-      if (path === "/status" || path === "/register") {
-        const appId = (env.DISCORD_APPLICATION_ID ?? "").trim();
-        const token = (env.DISCORD_TOKEN ?? "").trim();
-        const publicKey = (env.DISCORD_PUBLIC_KEY ?? "").trim();
-
-        if (path === "/status" || !appId || !token) {
-          return text(statusReport({ appId, token, publicKey, kv: !!env.FILTERS }), {
-            status: path === "/status" ? 200 : 503,
-          });
-        }
-
-        try {
-          const names = await registerCommands(appId, token);
-          return text(
-            `✅ Registered commands: ${names.join(", ")}\n\n` +
-              "You can now delete the DISCORD_TOKEN secret if you like — " +
-              "the bot doesn't need it for normal operation.",
-          );
-        } catch (e) {
-          return text(`❌ Registration failed — ${e.message}`, { status: 502 });
-        }
+      if (path === "/status") {
+        return text(
+          statusReport({
+            appId: (env.DISCORD_APPLICATION_ID ?? "").trim(),
+            token: (env.DISCORD_TOKEN ?? "").trim(),
+            publicKey: (env.DISCORD_PUBLIC_KEY ?? "").trim(),
+            kv: !!env.FILTERS,
+          }),
+        );
       }
-
       return text("⚙️ Industrial Buddy is running.\n\nSetup: /status · /register");
     }
 
@@ -394,6 +381,109 @@ function searchReply(filters, query) {
   return { embeds: [embed], components: [copySelectRow(matches)], flags: EPHEMERAL };
 }
 
+// ------------------------------------------------------------ setup: register
+
+// GET  /register → register from secrets if both are stored; otherwise serve a
+//                  form to paste the missing values.
+// POST /register → register using the pasted values. Nothing is persisted:
+//                  the bot token is used for this one Discord call and dropped.
+//
+// No extra auth is needed on the POST: a valid bot token IS the credential, and
+// Discord rejects anything else.
+async function handleRegister(request, env) {
+  const storedAppId = (env.DISCORD_APPLICATION_ID ?? "").trim();
+  const storedToken = (env.DISCORD_TOKEN ?? "").trim();
+
+  let appId = storedAppId;
+  let token = storedToken;
+
+  if (request.method === "POST") {
+    const form = await request.formData();
+    appId = (form.get("application_id") ?? storedAppId).toString().trim();
+    token = (form.get("token") ?? "").toString().trim();
+    // Tolerate a pasted "Bot <token>" prefix.
+    token = token.replace(/^Bot\s+/i, "");
+    if (!appId || !token) {
+      return html(registerForm({ appId, error: "Both fields are required." }), { status: 400 });
+    }
+  } else if (!token) {
+    // Token isn't stored — ask for it rather than failing.
+    return html(registerForm({ appId }));
+  }
+
+  try {
+    const names = await registerCommands(appId, token);
+    return html(
+      registerDone(names, { kv: !!env.FILTERS, storedToken: !!storedToken }),
+    );
+  } catch (e) {
+    return html(registerForm({ appId, error: e.message }), { status: 502 });
+  }
+}
+
+const escapeHtml = (s) =>
+  String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+const PAGE_CSS = `
+  :root { color-scheme: dark light }
+  body { font: 15px/1.55 ui-sans-serif, system-ui, sans-serif; max-width: 34rem;
+         margin: 3rem auto; padding: 0 1.25rem; background: #1a1b1e; color: #e6e6e8 }
+  h1 { font-size: 1.25rem; margin: 0 0 .25rem }
+  p.sub { color: #a0a0a8; margin: 0 0 1.5rem }
+  label { display: block; font-weight: 600; margin: 1rem 0 .35rem }
+  input { width: 100%; padding: .6rem .7rem; border-radius: 6px; border: 1px solid #3a3b40;
+          background: #232428; color: inherit; font: inherit }
+  small { display: block; color: #a0a0a8; margin-top: .35rem }
+  button { margin-top: 1.5rem; padding: .65rem 1.1rem; border: 0; border-radius: 6px;
+           background: #e8a13a; color: #1a1b1e; font: inherit; font-weight: 700; cursor: pointer }
+  .err { background: #40201f; border: 1px solid #7a3a36; padding: .7rem .9rem;
+         border-radius: 6px; margin-bottom: 1rem; white-space: pre-wrap }
+  .ok { background: #1f3a26; border: 1px solid #37693f; padding: .7rem .9rem; border-radius: 6px }
+  code { background: #232428; padding: .1rem .35rem; border-radius: 4px }
+  @media (prefers-color-scheme: light) {
+    body { background: #fff; color: #1a1b1e }
+    input { background: #fff; border-color: #ccc }
+    p.sub, small { color: #5a5a62 }
+    .err { background: #fdeceb; border-color: #f0b4b0 }
+    .ok { background: #eaf6ec; border-color: #b6dcbe }
+    code { background: #f1f1f3 }
+  }`;
+
+function registerForm({ appId = "", error = "" } = {}) {
+  return `<style>${PAGE_CSS}</style>
+<h1>⚙️ Register slash commands</h1>
+<p class="sub">One-time setup. Your bot token is used for a single call to Discord and is <strong>not stored</strong>.</p>
+${error ? `<div class="err">❌ ${escapeHtml(error)}</div>` : ""}
+<form method="POST">
+  <label for="application_id">Application ID</label>
+  <input id="application_id" name="application_id" value="${escapeHtml(appId)}"
+         inputmode="numeric" autocomplete="off" required>
+  <small>Discord developer portal → your app → General Information.</small>
+
+  <label for="token">Bot token</label>
+  <input id="token" name="token" type="password" autocomplete="off" required
+         placeholder="paste the token from the Bot page">
+  <small>Bot page → Reset Token. Treat it like a password — don't share it.</small>
+
+  <button type="submit">Register commands</button>
+</form>`;
+}
+
+function registerDone(names, { kv, storedToken }) {
+  return `<style>${PAGE_CSS}</style>
+<h1>⚙️ Industrial Buddy</h1>
+<div class="ok">✅ Registered commands: ${names.map((n) => `<code>${escapeHtml(n)}</code>`).join(" ")}</div>
+<p>Next: run <code>/catalog</code> in your channel and pin the bot's message.
+Commands can take a few minutes to appear in Discord the first time.</p>
+${
+  kv
+    ? "<p>Storage is bound, so <code>/admin add</code> and <code>/admin remove</code> are ready.</p>"
+    : "<p>⚠️ KV storage isn't bound yet, so <code>/admin</code> can't save changes. " +
+      "Create a KV namespace and bind it as <code>FILTERS</code> (see the README).</p>"
+}
+${storedToken ? "<p>You can now delete the <code>DISCORD_TOKEN</code> secret — it isn't needed again.</p>" : ""}`;
+}
+
 // -------------------------------------------------------------- diagnostics
 
 // Human-readable setup check. Reports only presence, length, and shape —
@@ -424,7 +514,11 @@ function statusReport({ appId, token, publicKey, kv }) {
 
   if (!appId || !token) {
     lines.push(
-      "Missing variables are almost always one of these:",
+      !appId
+        ? "/register will ask for the missing values in a form — nothing needs to be stored."
+        : "DISCORD_TOKEN isn't needed as a secret: /register will ask you to paste it.",
+      "",
+      "If you'd rather store it, missing variables are almost always one of these:",
       "",
       "1. Added under the wrong section. They must be at",
       "   Worker → Settings → Variables and Secrets (runtime).",
@@ -458,6 +552,18 @@ function text(body, init = {}) {
     status: init.status ?? 200,
     headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
   });
+}
+
+// Setup page. Never cached, never indexed — these pages take a bot token.
+function html(body, init = {}) {
+  return new Response(
+    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<meta name="robots" content="noindex"><title>Industrial Buddy setup</title>${body}`,
+    {
+      status: init.status ?? 200,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    },
+  );
 }
 
 function json(payload) {

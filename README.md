@@ -44,15 +44,25 @@ test ping — if the save succeeds, the signature check is working.
 
 ### 4. Register the slash commands (in the browser)
 
-1. Add two more secrets on the Worker (Settings → Variables and Secrets):
-   `DISCORD_APPLICATION_ID` (General Information page) and `DISCORD_TOKEN`
-   (Bot page → Reset Token).
-2. Visit `https://<your-worker>.workers.dev/register` in your browser.
-   You should see: `✅ Registered commands: /catalog, /filter, /admin`.
-3. Optional: delete the `DISCORD_TOKEN` secret again — the bot only needs it
-   for this step, never for normal operation.
+Visit `https://<your-worker>.workers.dev/register` and paste your Application
+ID and bot token into the form. You should get:
+`✅ Registered commands: /catalog /filter /admin`
 
-(Equivalent CLI, if you prefer: `DISCORD_APPLICATION_ID=... DISCORD_TOKEN=... npm run register`)
+The token is used for that single call to Discord and is **not stored**. If you
+prefer, store `DISCORD_APPLICATION_ID` / `DISCORD_TOKEN` as secrets instead and
+`/register` will use them without asking; a CLI equivalent also exists
+(`DISCORD_APPLICATION_ID=... DISCORD_TOKEN=... npm run register`).
+
+Re-run `/register` after upgrading the bot if the command list changes.
+
+### Troubleshooting: `/status`
+
+Visit `https://<your-worker>.workers.dev/status` for a setup check — it reports
+which variables the running Worker can actually see (lengths and shape only,
+never values) and whether KV storage is bound. If a secret you added shows as
+`NOT VISIBLE`, it was added under Settings → **Build** (build-time only)
+instead of Settings → **Variables and Secrets** (runtime), or the Worker hasn't
+redeployed since.
 
 ### 5. Post & pin the catalog
 
