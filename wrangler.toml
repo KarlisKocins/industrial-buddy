@@ -2,5 +2,14 @@ name = "industrial-buddy"
 main = "src/index.js"
 compatibility_date = "2026-07-01"
 
-# Secrets (set with `npx wrangler secret put <NAME>`):
+# Secrets (set with `npx wrangler secret put <NAME>`, or dashboard → Settings →
+# Variables and Secrets):
 #   DISCORD_PUBLIC_KEY — from the Discord developer portal, General Information page
+
+# Filter storage — lets admins manage filters from Discord (/admin add, /admin remove).
+# Create the namespace (dashboard → Storage & Databases → KV → Create, name it
+# "industrial-buddy-filters"), then uncomment and paste its ID below:
+#
+# [[kv_namespaces]]
+# binding = "FILTERS"
+# id = "PASTE_NAMESPACE_ID_HERE"

@@ -38,6 +38,25 @@ const commands = [
       },
     ],
   },
+  {
+    name: "admin",
+    description: "Manage the filter library (mods only)",
+    // Only members with Manage Messages see/use this; server owners can
+    // adjust who exactly in Server Settings → Integrations → Industrial Buddy.
+    default_member_permissions: "8192",
+    options: [
+      {
+        type: 1, // SUB_COMMAND
+        name: "add",
+        description: "Add a filter to the catalog via a form",
+      },
+      {
+        type: 1, // SUB_COMMAND
+        name: "remove",
+        description: "Remove a filter from the catalog",
+      },
+    ],
+  },
 ];
 
 const res = await fetch(`https://discord.com/api/v10/applications/${APPLICATION_ID}/commands`, {

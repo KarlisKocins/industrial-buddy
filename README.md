@@ -54,24 +54,36 @@ In #industrial-paste run `/catalog`, then right-click the bot's message →
 **Pin Message**. Done — the tabs and picker on the pinned message keep
 working indefinitely.
 
-## Editing the filter library
+## Managing filters from Discord (no PC needed)
 
-All filters live in [`src/filters.js`](src/filters.js). Each entry has a
-name, emoji, category, item summary, and the actual game JSON (one `files`
-entry per conveyor — two-conveyor in/out setups get two labelled code blocks
-in the copy reply).
+Admins with **Manage Messages** manage the library entirely in Discord:
 
-The **Electric Furnace · 1 Conv** JSON is the real one from the channel; the
-other five are seeded placeholders in the correct format — **replace them
-with your tested versions**. After editing, redeploy:
+- **`/admin add`** — opens a form: name, category (Furnace / Refinery /
+  Recycler), items summary, description, and the filter JSON pasted straight
+  from the game (Industrial Conveyor → **Copy (JSON)**). The JSON is
+  validated before saving — a broken paste is rejected with the reason.
+  For two-conveyor setups, paste an object of labelled arrays instead:
+  `{"Conveyor 1 — ore in": [...], "Conveyor 2 — refined out": [...]}`
+- **`/admin remove`** — pick a filter from a dropdown to delete it.
 
-```sh
-npx wrangler deploy
-```
+Changes show up on the pinned catalog the next time someone clicks a tab —
+no redeploy, no re-posting, no re-pinning.
 
-The pinned message re-renders from current data on every tab click, so new
-filters appear without re-posting it. (If you add a category, also nothing
-else to do — tabs come from `CATEGORIES`.)
+### One-time storage setup (required for /admin)
+
+Filters are stored in Cloudflare KV (free tier included). Until this is done
+the bot serves the built-in seed library and `/admin` explains it needs setup.
+
+1. Cloudflare dashboard → **Storage & Databases → KV** → **Create a
+   namespace** → name it `industrial-buddy-filters` → copy its **ID**.
+2. In `wrangler.toml`, uncomment the `[[kv_namespaces]]` block and paste the ID.
+3. Commit/push (auto-deploys), or `npx wrangler deploy`.
+
+The seed library in [`src/filters.js`](src/filters.js) (`DEFAULT_FILTERS`) is
+what the catalog shows before the first `/admin` edit; the **Electric
+Furnace · 1 Conv** JSON is the real one from the channel, the other five are
+placeholders — easiest is to just `/admin remove` them and `/admin add` your
+tested versions once storage is live.
 
 ## Limits worth knowing
 
